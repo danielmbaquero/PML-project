@@ -1,0 +1,86 @@
+---
+title: "PML Course Project - Weight lifting Done Right?"
+author: "Daniel Baquero"
+date: "5/26/2020"
+output: html_document
+---
+
+## Abstract  
+  
+The objective of the project is to use the GroupWare Human Activity Recognition Weight Lifting data-set to predict if a person is performing correctly an specific exercise. The data set contains info about 6 subjects performing a weight lift while recording their motions using on-body sensors. The training data set have 19622 observations. The ML algorithm is random forest with 10-fold cross validation. This was run using parallel computation in R. The model achieved an average accuracy of 0.9951 and was able to correctly predict the 20 observations in the testing set.  
+  
+## Data Loading and Pro-processing  
+  
+The first step is to load the necessary libraries and the training and testing data-sets.  
+  
+```{r libraries}
+library(caret)
+library(RANN)
+library(parallel)
+library(doParallel)
+```
+```{r data, cache=TRUE}
+training <- read.csv("./pml-training.csv")
+testing <- read.csv("./pml-testing.csv")
+dim(training)
+```
+  
+As seen above, the training data-set contains 19622 observations of 160 different variables. Nonetheless, much of those 160 variables are summary variables and others are subject and time indicators. For this project, only the raw sensor data is used. Also, as observations are independent of time and subject, the identification variables are excluded as well. This was done using the grepl function.  
+  
+```{r datapreproc, cache=TRUE}
+varUse <- grepl("X|user|raw|cvtd|new|num|kurtosis|skewness|max|min|amplitude|var|avg|stddev",names(training))
+trainingP <- training[,!varUse]
+dim(trainingP)
+```
+  
+As seen above, the new training data set only contains 53 variables. If the "classe" variable is excluded that gives a remaining of 52 predictors.  
+Finally, to improve the ML algorithm, a "x" data frame is created with the 52 predictors and a "y" data frame with the "classe" variable.  
+  
+```{r xydata}
+x <- trainingP[,-53]
+y <- trainingP[,53]
+```  
+```{r ytable}
+summary(y)
+```  
+  
+As seen above, the classe variable is a factor with 5 levels. "A" level been the perfect weight lift performance and "B:E" levels are common defects in the exercise.  
+  
+## Model Training  
+  
+First, the training control is created. In this case, cross-validation with 10-folds is used. 
+  
+```{r traincontrol}
+modControl <- trainControl(method = "cv", number = 10)
+```  
+  
+The ML algorithm is random forest. With help of the caret::train() function the model is fitted. Also, to make the training computation faster, the makecluster() and registerDoParallel() functions are used.  
+  
+```{r modtrain, cache=TRUE}
+cluster <- makeCluster(detectCores() - 1)
+registerDoParallel(cluster)
+
+set.seed(9876)
+mod <- train(x, y, method = "rf", trControl = modControl)
+
+stopCluster(cluster)
+registerDoSEQ()
+```  
+  
+## Model Accuracy and Out-of-Sample Expected Error  
+  
+To check the model accuracy and expected out-of-sample error the re-samples accuracy of each k-fold is checked. Also, the confusionMatrix.train() function is used to see the average accuracy. The expected out-of-sample accuracy es expected to be somewhat smaller than the 10-fold average accuracy.  
+  
+```{r accuracy}
+mod$resample
+confusionMatrix.train(mod)
+```  
+  
+## Testing  
+  
+The final step is to predict the testing data-set using the fitted model.  
+  
+```{r testing}
+pred <- predict(mod, newdata = testing)
+pred
+```  
